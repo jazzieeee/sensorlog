@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>SensorLog — MongoDB Atlas</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: rgba(120,100,255,0.18);
+    --accent: #7c5cfc;
+    --accent2: #00e5c0;
+    --accent3: #ff6b6b;
+    --warn: #ff9f43;
+    --text: #e8e6f0;
+    --muted: #7a788a;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background-image:
+      linear-gradient(rgba(124,92,252,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,92,252,0.04) 1px, transparent 1px);
+    background-size:32px 32px;
+    pointer-events:none; z-index:0;
+  }
+  .app { position:relative; z-index:1; max-width:480px; margin:0 auto; padding-bottom:60px; }
+
+  /* HEADER */
+  header {
+    padding:20px 16px 14px;
+    border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .logo {
+    font-size:20px; font-weight:800;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .db-badge {
+    display:flex; align-items:center; gap:6px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:20px; padding:4px 10px;
+    font-size:11px; font-family:var(--mono); color:var(--muted);
+  }
+  .db-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); transition:all 0.3s; }
+  .db-dot.online { background:var(--accent2); box-shadow:0 0 6px rgba(0,229,192,0.4); }
+  .db-dot.error { background:var(--accent3); }
+
+  /* CONNECTION INFO */
+  .conn-info {
+    margin:12px 16px;
+    background:var(--surface2);
+    border:1px solid rgba(0,229,192,0.2);
+    border-radius:12px; padding:12px 14px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .conn-icon { font-size:18px; }
+  .conn-text { font-size:11px; font-family:var(--mono); color:var(--accent2); line-height:1.5; }
+  .conn-text b { color:var(--text); }
+
+  /* CONTROLS */
+  .controls { padding:12px 16px; display:flex; gap:10px; }
+  .btn {
+    flex:1; padding:13px; border-radius:12px;
+    border:1px solid var(--border);
+    font-family:var(--sans); font-size:13px; font-weight:600;
+    cursor:pointer; transition:all 0.2s;
+  }
+  .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn-primary:hover { background:#6a48f0; }
+  .btn-primary:active { transform:scale(0.97); }
+  .btn-primary:disabled { background:var(--surface2); color:var(--muted); border-color:var(--border); cursor:not-allowed; }
+  .btn-save { background:rgba(0,229,192,0.1); color:var(--accent2); border-color:rgba(0,229,192,0.3); }
+  .btn-save:hover { background:rgba(0,229,192,0.18); }
+  .btn-save:disabled { background:transparent; color:var(--muted); border-color:var(--border); cursor:not-allowed; }
+
+  /* STATS */
+  .stats-bar { padding:0 16px 12px; display:flex; gap:8px; }
+  .stat-pill {
+    flex:1; background:var(--surface);
+    border:1px solid var(--border); border-radius:10px;
+    padding:10px 8px; text-align:center;
+  }
+  .sv { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--text); display:block; }
+  .sl { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-family:var(--mono); }
+
+  /* SENSOR CARDS */
+  .sensors-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:0 16px 12px; }
+  .sensor-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:14px; position:relative; overflow:hidden; transition:border-color 0.3s;
+  }
+  .sensor-card.wide { grid-column:1/-1; }
+  .sensor-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:var(--card-line,var(--accent));
+    transform:scaleX(0); transform-origin:left; transition:transform 0.4s;
+  }
+  .sensor-card.active::before { transform:scaleX(1); }
+  .sensor-card.active { border-color:rgba(124,92,252,0.3); }
+  .card-badge {
+    position:absolute; top:9px; right:9px;
+    font-size:9px; font-family:var(--mono); padding:3px 7px;
+    border-radius:20px; background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+  }
+  .card-badge.live { background:rgba(0,229,192,0.1); color:var(--accent2); border-color:rgba(0,229,192,0.3); }
+  .card-badge.sim { background:rgba(255,159,67,0.1); color:var(--warn); border-color:rgba(255,159,67,0.3); }
+  .card-badge.err { background:rgba(255,107,107,0.1); color:var(--accent3); border-color:rgba(255,107,107,0.3); }
+  .card-icon { font-size:20px; margin-bottom:6px; }
+  .card-label { font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:10px; font-family:var(--mono); }
+  .card-value { font-family:var(--mono); font-size:12px; color:var(--text); line-height:1.7; }
+  .val-big { color:var(--accent2); font-size:22px; font-weight:700; display:block; }
+  .val-muted { font-size:10px; color:var(--muted); margin-top:2px; }
+
+  /* ACCEL BARS */
+  .accel-bars { display:flex; flex-direction:column; gap:7px; margin-top:6px; }
+  .accel-row { display:flex; align-items:center; gap:6px; }
+  .ax-lbl { font-family:var(--mono); font-size:10px; color:var(--muted); width:12px; }
+  .ax-track { flex:1; height:4px; background:var(--surface2); border-radius:2px; overflow:hidden; position:relative; }
+  .ax-fill { height:100%; border-radius:2px; position:absolute; transition:width 0.15s,left 0.15s; }
+  .ax-val { font-family:var(--mono); font-size:10px; color:var(--muted); width:44px; text-align:right; }
+
+  /* LOG */
+  .log-section { margin:0 16px; background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+  .log-header { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .log-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); font-family:var(--mono); }
+  .log-count { font-size:10px; font-family:var(--mono); color:var(--accent); }
+  .log-entries { max-height:180px; overflow-y:auto; padding:8px; }
+  .log-entry { padding:7px 10px; margin-bottom:4px; border-radius:8px; font-family:var(--mono); font-size:10px; border-left:3px solid transparent; animation:fi 0.3s ease; }
+  .log-entry.ok  { background:rgba(0,229,192,0.06); border-color:var(--accent2); color:var(--accent2); }
+  .log-entry.err { background:rgba(255,107,107,0.06); border-color:var(--accent3); color:var(--accent3); }
+  .log-entry.inf { background:rgba(124,92,252,0.06); border-color:var(--accent); color:#9d80ff; }
+  .log-entries::-webkit-scrollbar { width:3px; }
+  .log-entries::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  @keyframes fi { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">SensorLog</div>
+    <div class="db-badge">
+      <div class="db-dot" id="dbDot"></div>
+      <span id="dbLabel">Conectando...</span>
+    </div>
+  </header>
+
+  <!-- Connection Banner -->
+  <div class="conn-info" id="connBanner">
+    <div class="conn-icon">⏳</div>
+    <div class="conn-text" id="connText">Verificando conexión con MongoDB Atlas...</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-primary" id="btnStart" onclick="toggleRecording()">▶ Iniciar Sensores</button>
+    <button class="btn btn-save" id="btnSave" onclick="saveNow()" disabled>☁ Guardar Ahora</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-pill"><span class="sv" id="stSaved">0</span><span class="sl">Guardados</span></div>
+    <div class="stat-pill"><span class="sv" id="stBuffer">0</span><span class="sl">Buffer</span></div>
+    <div class="stat-pill"><span class="sv" id="stErrors">0</span><span class="sl">Errores</span></div>
+  </div>
+
+  <!-- Sensors Grid -->
+  <div class="sensors-grid">
+
+    <!-- GPS -->
+    <div class="sensor-card wide" id="cGps">
+      <span class="card-badge" id="bGps">OFF</span>
+      <div class="card-icon">🗺</div>
+      <div class="card-label">GPS — Geolocalización</div>
+      <div class="card-value" id="vGps">Esperando...</div>
+      <div class="val-muted" id="vGpsAcc"></div>
+    </div>
+
+    <!-- Accel -->
+    <div class="sensor-card wide" id="cAccel" style="--card-line:var(--accent)">
+      <span class="card-badge" id="bAccel">OFF</span>
+      <div class="card-icon">📐</div>
+      <div class="card-label">Acelerómetro — 3 Ejes</div>
+      <div class="accel-bars">
+        <div class="accel-row">
+          <span class="ax-lbl">X</span>
+          <div class="ax-track"><div class="ax-fill" id="bX" style="background:var(--accent);width:0;left:50%"></div></div>
+          <span class="ax-val" id="vX">0.00</span>
+        </div>
+        <div class="accel-row">
+          <span class="ax-lbl">Y</span>
+          <div class="ax-track"><div class="ax-fill" id="bY" style="background:var(--accent2);width:0;left:50%"></div></div>
+          <span class="ax-val" id="vY">0.00</span>
+        </div>
+        <div class="accel-row">
+          <span class="ax-lbl">Z</span>
+          <div class="ax-track"><div class="ax-fill" id="bZ" style="background:var(--warn);width:0;left:50%"></div></div>
+          <span class="ax-val" id="vZ">0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Luz -->
+    <div class="sensor-card" id="cLight" style="--card-line:var(--warn)">
+      <span class="card-badge" id="bLight">OFF</span>
+      <div class="card-icon">💡</div>
+      <div class="card-label">Luz Ambiental</div>
+      <span class="val-big" id="vLux">—</span>
+      <div class="val-muted" id="vLuxLabel">lux</div>
+    </div>
+
+    <!-- Orientacion -->
+    <div class="sensor-card" id="cOrient" style="--card-line:var(--accent2)">
+      <span class="card-badge" id="bOrient">OFF</span>
+      <div class="card-icon">🧭</div>
+      <div class="card-label">Orientación</div>
+      <span class="val-big" id="vAlpha">—°</span>
+      <div class="val-muted" id="vOrientSub">brújula alfa</div>
+    </div>
+
+  </div>
+
+  <!-- Log -->
+  <div class="log-section">
+    <div class="log-header">
+      <span class="log-title">Actividad</span>
+      <span class="log-count" id="logCnt">0 eventos</span>
+    </div>
+    <div class="log-entries" id="logEl"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────
+// Cambia esta URL si corres el servidor en otro puerto/host
+const API = window.location.origin;   // mismo servidor
+
+// ── State ────────────────────────────────────────────────────
+let recording = false;
+let gpsId = null, accelFn = null, orientFn = null, lightSensor = null;
+let autoInterval = null, lightSimTimer = null;
+let saved = 0, errors = 0;
+let buffer = [];  // lecturas pendientes
+let sessionId = Math.random().toString(36).slice(2,10);
+let logTotal = 0;
+
+// ── Startup: check MongoDB status ────────────────────────────
+window.addEventListener('DOMContentLoaded', checkDB);
+
+async function checkDB() {
+  try {
+    const r = await fetch(API + '/api/status');
+    const d = await r.json();
+    if (d.mongodb === 'conectado') {
+      setDB(true, 'Atlas · ' + d.base_datos);
+      setConn('✅', `<b>MongoDB Atlas conectado</b><br>Base de datos: ${d.base_datos}`);
+      log('ok', `MongoDB Atlas listo — DB: ${d.base_datos}`);
+    } else {
+      setDB(false, d.mongodb);
+      setConn('⚠️', `Estado: ${d.mongodb}`);
+      log('err', 'MongoDB no conectado: ' + d.mongodb);
+    }
+  } catch(e) {
+    setDB(false, 'Sin servidor');
+    setConn('❌', '<b>Servidor no encontrado</b><br>Ejecuta: node server.js');
+    log('err', 'No se pudo alcanzar el servidor backend.');
+  }
+}
+
+function setDB(ok, label) {
+  document.getElementById('dbDot').className = 'db-dot ' + (ok ? 'online' : 'error');
+  document.getElementById('dbLabel').textContent = label;
+}
+function setConn(icon, html) {
+  document.getElementById('connBanner').querySelector('.conn-icon').textContent = icon;
+  document.getElementById('connText').innerHTML = html;
+}
+
+// ── Recording ────────────────────────────────────────────────
+function toggleRecording() {
+  recording ? stopAll() : startAll();
+}
+
+function startAll() {
+  recording = true;
+  sessionId = Math.random().toString(36).slice(2,10);
+  document.getElementById('btnStart').textContent = '⏹ Detener';
+  document.getElementById('btnStart').className = 'btn btn-save';
+  document.getElementById('btnSave').disabled = false;
+  log('inf', `Sesión iniciada [${sessionId}]`);
+  startGPS(); startAccel(); startLight(); startOrient();
+  autoInterval = setInterval(autoSave, 15000);
+}
+
+function stopAll() {
+  recording = false;
+  document.getElementById('btnStart').textContent = '▶ Iniciar Sensores';
+  document.getElementById('btnStart').className = 'btn btn-primary';
+  if (gpsId) navigator.geolocation.clearWatch(gpsId);
+  if (accelFn) window.removeEventListener('devicemotion', accelFn);
+  if (orientFn) window.removeEventListener('deviceorientation', orientFn);
+  if (lightSensor) { try { lightSensor.stop(); } catch(e){} }
+  if (autoInterval) clearInterval(autoInterval);
+  if (lightSimTimer) clearTimeout(lightSimTimer);
+  ['bGps','bAccel','bLight','bOrient'].forEach(id => badge(id,'OFF',''));
+  ['cGps','cAccel','cLight','cOrient'].forEach(id => document.getElementById(id).classList.remove('active'));
+  log('inf', `Detenido. ${buffer.length} lecturas en buffer.`);
+  updateStats();
+}
+
+// ── GPS ──────────────────────────────────────────────────────
+function startGPS() {
+  if (!navigator.geolocation) { log('err','GPS no disponible'); badge('bGps','N/A','err'); return; }
+  gpsId = navigator.geolocation.watchPosition(pos => {
+    const g = { lat: pos.coords.latitude, lng: pos.coords.longitude,
+      alt: pos.coords.altitude, accuracy: pos.coords.accuracy, speed: pos.coords.speed };
+    document.getElementById('vGps').innerHTML =
+      `<span style="color:var(--accent2)">${g.lat.toFixed(6)}° N<br>${g.lng.toFixed(6)}° E</span>` +
+      (g.alt ? `<br><span style="color:var(--muted);font-size:10px">Alt: ${g.alt.toFixed(1)} m</span>` : '');
+    document.getElementById('vGpsAcc').textContent = `±${g.accuracy.toFixed(0)} m precisión`;
+    badge('bGps','LIVE','live');
+    document.getElementById('cGps').classList.add('active');
+    push({ tipo:'gps', gps:g });
+  }, err => {
+    log('err', 'GPS: ' + err.message);
+    badge('bGps','ERROR','err');
+    document.getElementById('vGps').textContent = 'Acceso denegado';
+  }, { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
+}
+
+// ── Acelerómetro ─────────────────────────────────────────────
+async function startAccel() {
+  if (!window.DeviceMotionEvent) { log('err','Acelerómetro no disponible'); badge('bAccel','N/A','err'); return; }
+  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    try { const p = await DeviceMotionEvent.requestPermission(); if (p !== 'granted') { log('err','Permiso acelerómetro denegado'); return; } }
+    catch(e) { log('err','Error permiso acelerómetro: '+e.message); return; }
+  }
+  let lastPush = 0;
+  accelFn = e => {
+    const a = e.accelerationIncludingGravity || e.acceleration;
+    if (!a) return;
+    const x = a.x||0, y = a.y||0, z = a.z||0;
+    // Update UI
+    document.getElementById('vX').textContent = x.toFixed(2);
+    document.getElementById('vY').textContent = y.toFixed(2);
+    document.getElementById('vZ').textContent = z.toFixed(2);
+    updateBar('bX', x); updateBar('bY', y); updateBar('bZ', z);
+    badge('bAccel','LIVE','live');
+    document.getElementById('cAccel').classList.add('active');
+    const now = Date.now();
+    if (now - lastPush > 2000) { push({ tipo:'acelerometro', acelerometro:{x,y,z} }); lastPush = now; }
+  };
+  window.addEventListener('devicemotion', accelFn);
+  log('inf','Acelerómetro iniciado');
+}
+
+function updateBar(id, val) {
+  const el = document.getElementById(id);
+  const pct = Math.max(0, Math.min(100, (val + 20) / 40 * 100));
+  if (val >= 0) { el.style.left = '50%'; el.style.width = (pct-50) + '%'; }
+  else          { el.style.left = pct + '%'; el.style.width = (50-pct) + '%'; }
+}
+
+// ── Luz Ambiental ─────────────────────────────────────────────
+function startLight() {
+  if ('AmbientLightSensor' in window) {
+    try {
+      lightSensor = new AmbientLightSensor();
+      lightSensor.addEventListener('reading', () => {
+        const lux = lightSensor.illuminance;
+        updateLux(lux, false);
+        push({ tipo:'luz', luz:{ lux, clasificacion:luxLabel(lux), simulada:false } });
+      });
+      lightSensor.addEventListener('error', e => { log('err','Sensor luz: '+e.error.message); simLight(); });
+      lightSensor.start();
+      badge('bLight','LIVE','live');
+      document.getElementById('cLight').classList.add('active');
+      log('inf','Sensor de luz ambiental iniciado');
+      return;
+    } catch(e) {}
+  }
+  simLight();
+}
+
+function simLight() {
+  log('inf','AmbientLightSensor no disponible → simulando por hora del día');
+  badge('bLight','SIM','sim');
+  document.getElementById('cLight').classList.add('active');
+  const tick = () => {
+    if (!recording) return;
+    const h = new Date().getHours();
+    const map = {5:50,6:500,7:5000,8:15000,9:30000,10:50000,11:65000,12:70000,13:70000,14:60000,15:45000,16:25000,17:8000,18:800,19:100};
+    const base = map[h] || (h>=20||h<5?5:1000);
+    const lux = base + (Math.random()-0.5)*base*0.1;
+    updateLux(lux, true);
+    push({ tipo:'luz', luz:{ lux: +lux.toFixed(1), clasificacion:luxLabel(lux), simulada:true } });
+    lightSimTimer = setTimeout(tick, 5000);
+  };
+  tick();
+}
+
+function updateLux(lux, sim) {
+  document.getElementById('vLux').textContent = lux.toFixed(0);
+  document.getElementById('vLuxLabel').textContent = luxLabel(lux) + (sim?' (sim)':'');
+}
+
+function luxLabel(l) {
+  if (l < 1) return '🌑 Oscuridad'; if (l < 100) return '🌙 Interior oscuro';
+  if (l < 1000) return '🏠 Interior'; if (l < 10000) return '☁ Exterior nublado';
+  if (l < 50000) return '🌤 Soleado'; return '☀ Sol directo';
+}
+
+// ── Orientación ───────────────────────────────────────────────
+function startOrient() {
+  if (!window.DeviceOrientationEvent) { log('err','Orientación no disponible'); badge('bOrient','N/A','err'); return; }
+  let lp = 0;
+  orientFn = e => {
+    const a = e.alpha || 0;
+    document.getElementById('vAlpha').textContent = a.toFixed(1) + '°';
+    badge('bOrient','LIVE','live');
+    document.getElementById('cOrient').classList.add('active');
+    const now = Date.now();
+    if (now - lp > 3000) {
+      push({ tipo:'orientacion', orientacion:{ alpha:a, beta:e.beta, gamma:e.gamma } });
+      lp = now;
+    }
+  };
+  window.addEventListener('deviceorientation', orientFn);
+  log('inf','Sensor de orientación iniciado');
+}
+
+// ── Buffer ────────────────────────────────────────────────────
+function push(extra) {
+  if (!recording) return;
+  buffer.push({
+    sessionId,
+    timestamp: new Date().toISOString(),
+    dispositivo: {
+      userAgent: navigator.userAgent.slice(0,80),
+      plataforma: navigator.platform||'desconocida',
+      pantalla: `${screen.width}x${screen.height}`
+    },
+    ...extra
+  });
+  updateStats();
+}
+
+// ── Save to MongoDB via backend ───────────────────────────────
+async function saveNow() {
+  if (buffer.length === 0) { log('inf','Buffer vacío, nada que guardar.'); return; }
+  document.getElementById('btnSave').textContent = '⏳ Guardando...';
+  document.getElementById('btnSave').disabled = true;
+
+  const toSave = buffer.splice(0, buffer.length);
+  updateStats();
+
+  try {
+    const res = await fetch(API + '/api/lecturas/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lecturas: toSave })
+    });
+    const d = await res.json();
+    if (d.success) {
+      saved += d.insertados;
+      log('ok', `✓ ${d.insertados} lecturas guardadas en Atlas (sesión ${sessionId})`);
+    } else throw new Error(d.error);
+  } catch(e) {
+    errors++;
+    buffer.unshift(...toSave);
+    log('err', 'Error guardando: ' + e.message);
+  }
+
+  document.getElementById('btnSave').textContent = '☁ Guardar Ahora';
+  document.getElementById('btnSave').disabled = false;
+  updateStats();
+}
+
+async function autoSave() {
+  if (buffer.length > 0) {
+    log('inf', `Auto-guardando ${buffer.length} lecturas...`);
+    await saveNow();
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────
+function badge(id, txt, cls) {
+  const el = document.getElementById(id);
+  el.textContent = txt;
+  el.className = 'card-badge' + (cls ? ' '+cls : '');
+}
+function log(type, msg) {
+  logTotal++;
+  const el = document.getElementById('logEl');
+  const d = document.createElement('div');
+  d.className = 'log-entry ' + type;
+  const t = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  d.textContent = `[${t}] ${msg}`;
+  el.insertBefore(d, el.firstChild);
+  if (el.children.length > 60) el.lastChild.remove();
+  document.getElementById('logCnt').textContent = logTotal + ' eventos';
+}
+function updateStats() {
+  document.getElementById('stSaved').textContent = saved;
+  document.getElementById('stBuffer').textContent = buffer.length;
+  document.getElementById('stErrors').textContent = errors;
+}
+</script>
+</body>
+</html>
